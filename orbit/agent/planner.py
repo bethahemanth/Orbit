@@ -188,6 +188,10 @@ class LLMPlanner:
         target = data.get("target")
         value = data.get("value")
 
+        # Safety backstop: ask_user MUST have a question in `value`.
+        if action_type is ActionType.ASK_USER and not value:
+            value = data.get("reason") or "Could you clarify what you'd like me to do?"
+
         # Trust the model's risk, but never downgrade below what the words say:
         # a model that forgets `risk` must not be able to submit silently.
         stated = str(data.get("risk", "safe")).strip().lower()
@@ -242,3 +246,51 @@ def parse_json(text: str) -> dict:
                 return json.loads(text[start : i + 1])
 
     raise ValueError(f"no JSON object found in model reply: {text[:200]!r}")
+
+
+# --------------------------------------------------------------------------- #
+# LLM-based verification — optional, costs one extra call per step.
+# --------------------------------------------------------------------------- #
+VERIFY_PROMPT = """You are verifying whether a browser action made progress toward a goal.
+
+Given the GOAL, the ACTION that was just taken, and the resulting PAGE state,
+answer with EXACTLY one word: "yes" or "no".
+
+- "yes" = the page state shows the action moved us closer to completing the goal.
+- "no"  = the page looks unchanged, the action failed, or we moved further away.
+
+Do not explain. One word only."""
+
+
+async def llm_verify_progress(
+    llm,
+    goal: str,
+    action: AgentAction,
+    obs: Observation,
+) -> bool:
+    """Ask the LLM whether the last action advanced the goal.
+
+    Returns True if the model says yes (or if the call fails — we don't want
+    a verification glitch to block the whole run).
+    """
+    prompt = (
+        f"GOAL:\n{goal}\n\n"
+        f"ACTION TAKEN:\n{action.type.value} -> {action.target or '(none)'}\n"
+        f"reason: {action.reason}\n\n"
+        f"RESULTING PAGE:\nurl: {obs.url}\ntitle: {obs.title}\n"
+        f"{obs.page_summary}\n"
+        f"elements: {obs.interactive_elements}"
+    )
+    try:
+        raw = await llm.ainvoke(
+            [
+                {"role": "system", "content": VERIFY_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=8,
+        )
+        return raw.strip().lower().startswith("yes")
+    except Exception:
+        # Verification failure must never kill the run.
+        return True
+

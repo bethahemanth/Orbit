@@ -23,12 +23,41 @@ from orbit.config import settings
 from orbit.control import ConsoleActivitySink, ConsoleGateway
 
 
-async def _run(goal: str, real: bool) -> None:
+def _try_web_ui():
+    """Attempt to import Dev 3's web UI components.
+
+    Returns (WebGateway, WebActivitySink) if available, None otherwise.
+    Allows the agent to run with the web UI when Dev 3's code is merged,
+    falling back to console defaults when it isn't.
+    """
+    try:
+        from orbit.ui.activity import WebActivitySink, WebGateway
+        return WebGateway, WebActivitySink
+    except ImportError:
+        return None
+
+
+async def _run(goal: str, real: bool, web_ui: bool) -> None:
     browser = BrowserUseController(headless=settings.headless) if real else MockBrowserController()
+
+    # Pick gateway and activity sink: web UI if requested and available,
+    # otherwise console defaults.
+    web_components = _try_web_ui() if web_ui else None
+    if web_components:
+        WebGateway, WebActivitySink = web_components
+        gateway = WebGateway()
+        activity = WebActivitySink()
+    else:
+        if web_ui:
+            print("[WARN] --web-ui requested but orbit.ui.activity not found. "
+                  "Falling back to console.")
+        gateway = ConsoleGateway()
+        activity = ConsoleActivitySink()
+
     agent = OrbitAgent(
         browser=browser,
-        gateway=ConsoleGateway(),      # Dev 3 swaps in ui.activity.WebGateway
-        activity=ConsoleActivitySink(),  # Dev 3 swaps in ui.activity.WebActivitySink
+        gateway=gateway,
+        activity=activity,
     )
     outcome = await agent.run(goal)
     print(f"\n=== outcome: {outcome} ===")
@@ -37,9 +66,12 @@ async def _run(goal: str, real: bool) -> None:
 def main() -> None:
     p = argparse.ArgumentParser(description="Orbit browser employee")
     p.add_argument("goal", nargs="?", default="Process today's 5 orders")
-    p.add_argument("--real", action="store_true", help="use the real Browser Use controller")
+    p.add_argument("--real", action="store_true",
+                   help="use the real Browser Use controller (Dev 1)")
+    p.add_argument("--web-ui", action="store_true",
+                   help="use Dev 3's web gateway/activity sink if available")
     args = p.parse_args()
-    asyncio.run(_run(args.goal, args.real))
+    asyncio.run(_run(args.goal, args.real, args.web_ui))
 
 
 if __name__ == "__main__":
