@@ -21,8 +21,8 @@ Chrome or the UI directly — only the contracts.
 
 from __future__ import annotations
 
-from orbit.agent.planner import Planner, RulePlanner
-from orbit.config import settings
+from orbit.agent.planner import LLMPlanner, Planner, RulePlanner
+from orbit.config import has_llm, settings
 from orbit.contracts import (
     ActionType,
     ActivitySink,
@@ -49,7 +49,15 @@ class OrbitAgent:
         self.gateway = gateway
         self.activity = activity
         self.max_steps = max_steps
-        self.planner = planner or RulePlanner(settings.portal_url)
+        self.planner = planner or self._default_planner()
+
+    @staticmethod
+    def _default_planner() -> Planner:
+        """LLM when a key is configured, rules when there isn't one.
+
+        Keeps the promise in the README: a fresh clone runs offline with no key.
+        """
+        return LLMPlanner() if has_llm() else RulePlanner(settings.portal_url)
 
     async def run(self, goal: str) -> str:
         """Drive `goal` to completion. Returns a short outcome string."""
