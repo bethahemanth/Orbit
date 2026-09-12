@@ -1,0 +1,16 @@
+[project]
+name = "orbit"
+version = "0.1.0"
+description = "A browser-native AI agent that turns natural-language goals into web actions."
+requires-python = ">=3.11"
+dependencies = [
+    "browser-use>=0.2.0",
+    "flask>=3.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

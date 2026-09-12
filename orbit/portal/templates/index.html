@@ -1,0 +1,34 @@
+<!doctype html>
+<title>Orbit Demo Portal</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; color: #1e2327; }
+  h1 { font-size: 1.25rem; }
+  table { border-collapse: collapse; margin-top: 1rem; }
+  th, td { border: 1px solid #ddd; padding: .5rem .8rem; text-align: left; }
+  .processed { color: #9aa0a6; text-decoration: line-through; }
+  button { cursor: pointer; }
+</style>
+<h1>Today's Orders</h1>
+<form method="get">
+  <input name="q" placeholder="Search customer" value="{{ q }}">
+  <button type="submit">Search</button>
+</form>
+<table>
+  <tr><th>ID</th><th>Customer</th><th>Item</th><th>Qty</th><th>Status</th><th></th></tr>
+  {% for o in orders %}
+  <tr>
+    <td>{{ o.id }}</td>
+    <td>{{ o.customer }}</td>
+    <td>{{ o.item }}</td>
+    <td>{{ o.qty }}</td>
+    <td class="{{ 'processed' if o.status == 'processed' else '' }}">{{ o.status }}</td>
+    <td>
+      {% if o.status != 'processed' %}
+      <form method="post" action="/process/{{ o.id }}">
+        <button type="submit">{{ label }} order</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>

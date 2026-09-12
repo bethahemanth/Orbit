@@ -1,0 +1,25 @@
+# secrets — never commit the shared key
+.env
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# browser-use / playwright artifacts
+.browser_use/
+screenshots/
+*.log
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+
+# claude code — commit shared config (.claude/commands, .claude/settings.json),
+# ignore personal/local overrides
+.claude/settings.local.json
+CLAUDE.local.md
