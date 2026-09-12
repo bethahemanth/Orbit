@@ -45,6 +45,21 @@ The portal is scaffolded: an orders table, a semantic **Process** button, a sear
 box, a `RENAME_BUTTON` toggle, and three "John" customers (for the ambiguity demo).
 Your job is to finish it, build the live UI, and make the demo bulletproof.
 
+### Two things you inherit from the other layers
+
+**The model is configured centrally — nothing in your layer picks one.** The
+provider and model id come from `orbit.config.make_llm()` reading `.env`
+(`ORBIT_LLM_PROVIDER`, `ORBIT_MODEL`; OpenRouter optional), so `orbit/portal/` and
+`orbit/ui/` must never hard-code a model, a provider, or an API key. If a demo run
+needs a different model, that's an `.env` edit, not a code change.
+
+**Keep every demo scenario browser-native.** The agent has an optional Exa web-search
+tool (`orbit.agent.tools`) if a test-case task truly needs an external lookup — but
+do **not** design a demo beat around it. The whole pitch is *"the browser is the
+integration layer"*; a scenario the agent solves by calling a search API instead of
+operating a page undercuts the thesis on stage. Portal and real-website beats stay
+pure browser.
+
 ---
 
 ## Build step 1 — finish the business portal (target: 0:00–0:40)
