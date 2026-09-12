@@ -29,16 +29,26 @@ class ConsoleGateway(HumanGateway):
         if request.options:
             for i, opt in enumerate(request.options, 1):
                 print(f"   {i}. {opt}")
-        return input("Your answer: ").strip()
+        try:
+            return input("Your answer: ").strip()
+        except (EOFError, OSError):
+            return request.options[0] if request.options else ""
 
     async def approve(self, request: ApprovalRequest) -> bool:
         print(f"\n[APPROVAL NEEDED] {request.summary}")
         print(f"   action: {request.action.type.value} -> {request.action.target}")
-        return input("Approve? [y/N]: ").strip().lower() == "y"
+        try:
+            return input("Approve? [y/N]: ").strip().lower() == "y"
+        except (EOFError, OSError):
+            return False
 
 
 class ConsoleActivitySink(ActivitySink):
     """Prints the observe->action->result->verify trace. Dev 3: render this."""
 
     def emit(self, kind: str, payload: dict[str, Any]) -> None:
-        print(f"[{kind.upper()}] {payload}")
+        try:
+            print(f"[{kind.upper()}] {payload}")
+        except UnicodeEncodeError:
+            clean = str(payload).encode("ascii", errors="replace").decode("ascii")
+            print(f"[{kind.upper()}] {clean}")
