@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Confirm Order — Orbit Demo Portal</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --text: #e4e6eb;
+      --text-muted: #8b8fa3;
+      --accent: #6c5ce7;
+      --accent-hover: #7c6ff7;
+      --danger: #e74c3c;
+      --success: #2ecc71;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .confirm-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.5rem;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .confirm-card h1 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--accent);
+    }
+    .confirm-card p.subtitle {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+    }
+    .order-details {
+      background: rgba(108, 92, 231, 0.08);
+      border: 1px solid rgba(108, 92, 231, 0.2);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label { color: var(--text-muted); font-size: 0.85rem; }
+    .detail-value { font-weight: 500; }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-pending {
+      background: rgba(243, 156, 18, 0.15);
+      color: #f39c12;
+    }
+    .status-processed {
+      background: rgba(46, 204, 113, 0.15);
+      color: #2ecc71;
+    }
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+    .btn {
+      flex: 1;
+      padding: 0.75rem 1.25rem;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      text-align: center;
+    }
+    .btn-confirm {
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      color: #fff;
+    }
+    .btn-confirm:hover {
+      background: linear-gradient(135deg, var(--accent-hover), #9b7ff7);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 15px rgba(108, 92, 231, 0.4);
+    }
+    .btn-back {
+      background: var(--border);
+      color: var(--text-muted);
+    }
+    .btn-back:hover {
+      background: #363a4a;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <div class="confirm-card">
+    <h1>Confirm Order</h1>
+    <p class="subtitle">Review the details below before finalizing this order.</p>
+
+    <div class="order-details">
+      <div class="detail-row">
+        <span class="detail-label">Order ID</span>
+        <span class="detail-value">#{{ order.id }}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Customer</span>
+        <span class="detail-value">{{ order.customer }}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Item</span>
+        <span class="detail-value">{{ order.item }}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Quantity</span>
+        <span class="detail-value">{{ order.qty }}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Status</span>
+        <span class="detail-value">
+          <span class="status-badge status-{{ order.status }}">{{ order.status }}</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <a href="/" class="btn btn-back">← Back to orders</a>
+      {% if order.status != 'processed' %}
+      <form method="post" action="/confirm/{{ order.id }}" style="flex:1;display:flex;">
+        <button type="submit" class="btn btn-confirm" style="flex:1;">Confirm &amp; submit</button>
+      </form>
+      {% else %}
+      <span class="btn btn-back" style="opacity:0.5;">Already processed</span>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>
