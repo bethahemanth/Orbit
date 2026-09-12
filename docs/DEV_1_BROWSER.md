@@ -40,6 +40,13 @@ cp .env.example .env                          # paste the SHARED ANTHROPIC_API_K
 python -m orbit.main "Process today's 5 orders"   # proves the clone runs (mock)
 ```
 
+**LLM provider — FYI, you never call the model yourself.** The project builds its
+model in exactly one place, `orbit.config.make_llm()`, so switching providers is an
+`.env` change (`ORBIT_LLM_PROVIDER=openrouter`, `ORBIT_MODEL=anthropic/claude-sonnet-4.6`)
+and **nothing in `orbit/browser/` hard-codes a provider or a model id**. When you run
+`--real` end-to-end, whatever `make_llm()` returns is what reasons over the
+observations your layer produces.
+
 **Shared Claude account:** one key for all three of you = shared rate limits. Your
 layer barely needs the model, so test against the mock and only hit the real model
 in the joint end-to-end run. Use the account to *write code* freely (see the

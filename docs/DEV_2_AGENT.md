@@ -36,14 +36,42 @@ git clone https://github.com/bethahemanth/Orbit.git && cd Orbit
 git checkout main && git pull --rebase origin main
 uv venv && source .venv/bin/activate         # Python >= 3.11
 uv pip install -e ".[dev]"
-cp .env.example .env                          # paste the SHARED ANTHROPIC_API_KEY, set ORBIT_DEV_TAG=dev2
+cp .env.example .env                          # set your provider + key, and ORBIT_DEV_TAG=dev2
 python -m orbit.main "Process today's 5 orders"   # runs today with a stub planner
 ```
 
-**Shared Claude account — you call it on every step, so you use the quota most.**
-It's one key for all three of you. While iterating: keep `max_steps` low, print and
-reuse the model's raw output instead of re-running, and say in chat before a heavy
-test run. On 429s, back off. The model id is `orbit.config.settings.model`.
+### The LLM provider — OpenRouter is the recommended default
+
+**Always build the model with `orbit.config.make_llm()`.** Never construct a client
+inline and never hard-code a model id: `make_llm()` is the single place the provider
+is chosen, so swapping providers is an `.env` change and *zero* code changes.
+
+```env
+# .env — recommended
+ORBIT_LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=sk-or-v1-REPLACE_ME
+ORBIT_MODEL=anthropic/claude-sonnet-4.6     # NOTE the provider prefix
+
+# .env — switching back to direct Anthropic is these two lines
+# ORBIT_LLM_PROVIDER=anthropic
+# ANTHROPIC_API_KEY=sk-ant-REPLACE_ME
+# ORBIT_MODEL=claude-sonnet-4-6             # bare id, no prefix
+```
+
+**Why OpenRouter:** it is one gateway to many models, so you can fall back to a
+different model — or a different vendor entirely — the moment the shared key is
+rate-limited, without touching `decide()`. That matters because you call the model
+on every step and you share the quota with two other people.
+
+> **Model ids differ by provider and it is the #1 way to break a run.** OpenRouter
+> ids are **provider-prefixed and dotted** (`anthropic/claude-sonnet-4.6`); direct
+> Anthropic ids are bare and dashed (`claude-sonnet-4-6`). An unprefixed id on
+> OpenRouter is a 404. `make_llm()` exists so exactly one file has to know this.
+
+**Shared account — you call it on every step, so you use the quota most.** While
+iterating: keep `max_steps` low, print and reuse the model's raw output instead of
+re-running, and say in chat before a heavy test run. On 429s, back off (or flip
+`ORBIT_MODEL` to another OpenRouter model and keep going).
 
 The loop skeleton (observe→reason→act→verify→recover, plus clarify + approval
 routing) is already wired in `orbit/agent/loop.py`. You only fill in `decide()` and
@@ -83,8 +111,7 @@ parse it into an `AgentAction`.
 
 **Build (pattern — adapt to your version):**
 ```python
-from browser_use import ChatAnthropic          # or the `anthropic` SDK directly
-from orbit.config import settings
+from orbit.config import make_llm              # NEVER construct the client inline
 
 SYS = """You control a web browser. Given a GOAL and the current PAGE, output the
 SINGLE next action as JSON: {"type": one of navigate|click|type|select|scroll|back|ask_user|finish,
@@ -94,7 +121,7 @@ SINGLE next action as JSON: {"type": one of navigate|click|type|select|scroll|ba
 Rules: use ask_user when the target is ambiguous. Mark submit/purchase/delete/send as consequential."""
 
 async def decide(self, goal, obs):
-    llm = ChatAnthropic(model=settings.model)          # uses the shared key
+    llm = make_llm()                                   # provider + model from .env
     prompt = f"GOAL:\n{goal}\n\nPAGE:\nurl={obs.url}\n{obs.page_summary}\nelements={obs.interactive_elements}"
     raw = await llm.ainvoke([{"role":"system","content":SYS},{"role":"user","content":prompt}])
     data = _parse_json(raw)                              # strip ``` fences, json.loads
@@ -177,6 +204,70 @@ agent = OrbitAgent(browser, WebGateway(), WebActivitySink())
 - Ambiguous goal asks; consequential step waits for approval.
 - Renamed control recovers.
 - The same agent also completes a task on one real website.
+
+---
+
+## Optional — web search with Exa (`orbit.agent.tools`)
+
+> **Supporting tool only. It is NOT the demo path.** The thesis is *"the browser is
+> the integration layer"* — the headline demo must stay browser-native. If the agent
+> answers a question by calling a search API instead of operating a page, you have
+> quietly argued *against* the pitch. Reach for Exa only for side research the
+> browser genuinely can't cover, and never build a demo beat that depends on it.
+
+Set the key in `.env` (placeholder — never commit a real one):
+
+```env
+EXA_API_KEY=REPLACE_ME
+```
+
+**Direct call** — `exa_search()` when `decide()` wants a lookup itself:
+
+```python
+from orbit.agent.tools import exa_search
+
+hits = exa_search("browser-use semantic click by accessible name", num_results=10)
+```
+
+Under the hood that is the standard search call — `type="auto"` balances relevance
+and speed, and `highlights` returns query-relevant excerpts instead of whole pages,
+which keeps token cost predictable:
+
+```python
+from exa_py import Exa
+
+exa = Exa(api_key=os.environ["EXA_API_KEY"])
+results = exa.search(
+    query,
+    type="auto",
+    num_results=10,
+    contents={"highlights": True},
+)
+for r in results.results:
+    print(r.title, r.url, r.highlights)
+```
+
+**As a browser-use tool** — `build_tools()` registers it as a custom tool so the
+model can call search on its own during a run:
+
+```python
+from orbit.agent.tools import build_tools
+
+tools = build_tools()          # registers exa_search as a browser-use custom tool
+```
+
+**Useful extras** (reach for them only when the simple call isn't enough):
+
+- `output_schema=` — optional **structured output**. Pass a JSON schema and Exa
+  returns synthesized JSON in `results.output.content` plus field-level citations in
+  `results.output.grounding`. Works on every search type. Skip it when raw
+  `results` + `highlights` already answer the question.
+- `/answer` — a grounded answer with citations, for question-first flows where you
+  don't need to inspect raw results.
+- `/contents` (`exa.get_contents(urls, highlights=True)`) — content for URLs you
+  *already* have, rather than finding new ones.
+
+Reference: <https://docs.exa.ai/reference/search-api-guide-for-coding-agents>
 
 ---
 
