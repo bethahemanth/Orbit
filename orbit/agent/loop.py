@@ -21,6 +21,8 @@ Chrome or the UI directly — only the contracts.
 
 from __future__ import annotations
 
+from orbit.agent.planner import Planner, RulePlanner
+from orbit.config import settings
 from orbit.contracts import (
     ActionType,
     ActivitySink,
@@ -41,11 +43,13 @@ class OrbitAgent:
         gateway: HumanGateway,
         activity: ActivitySink,
         max_steps: int = 25,
+        planner: Planner | None = None,
     ) -> None:
         self.browser = browser
         self.gateway = gateway
         self.activity = activity
         self.max_steps = max_steps
+        self.planner = planner or RulePlanner(settings.portal_url)
 
     async def run(self, goal: str) -> str:
         """Drive `goal` to completion. Returns a short outcome string."""
@@ -100,14 +104,12 @@ class OrbitAgent:
     async def decide(self, goal: str, obs: Observation) -> AgentAction:
         """REASON: pick the next action from the goal + current page.
 
-        TODO(dev2): call the shared Claude account (ChatAnthropic via
-        orbit.config.settings.model) with the goal + observation and parse a
-        single AgentAction out. Set risk=CONSEQUENTIAL for submit/purchase/
-        delete/send. Emit ASK_USER when the target is ambiguous (e.g. 3 Johns).
-
-        The stub below just finishes, so the loop is runnable end-to-end today.
+        Delegates to whichever `Planner` this agent was built with — the LLM
+        planner when a key is configured, the rule-based one offline. The loop
+        itself stays planner-agnostic on purpose: swapping the brain must not
+        mean touching the control flow.
         """
-        return AgentAction(type=ActionType.FINISH, reason="stub: replace with LLM planner")
+        return await self.planner.next_action(goal, obs)
 
     def verify(self, goal: str, action: AgentAction, obs: Observation) -> bool:
         """VERIFY: did the last action move us toward the goal?
