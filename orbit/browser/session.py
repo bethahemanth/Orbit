@@ -228,6 +228,7 @@ class MockBrowserController(BrowserController):
     def __init__(self) -> None:
         self.history: list[AgentAction] = []
         self._url = "about:blank"
+        self._orders_left = 5
 
     async def start(self) -> None:
         self._url = "http://127.0.0.1:5000"
@@ -236,17 +237,26 @@ class MockBrowserController(BrowserController):
         pass
 
     async def observe(self) -> Observation:
+        if self._orders_left > 0:
+            summary = f"Mock page. Orders table with {self._orders_left} rows; a 'Process' button per row."
+            elements = ["'Process' button", "'Search' field", "'Submit order' button"]
+        else:
+            summary = "Mock page. All orders processed."
+            elements = ["'Search' field"]
         return Observation(
             url=self._url,
             title="Mock Portal",
-            page_summary="Mock page. Orders table with 5 rows; a 'Process' button per row.",
-            interactive_elements=["'Process' button", "'Search' field", "'Submit order' button"],
+            page_summary=summary,
+            interactive_elements=elements,
         )
 
     async def execute(self, action: AgentAction) -> ActionResult:
         self.history.append(action)
         if action.type == ActionType.NAVIGATE and action.target:
             self._url = action.target
+        elif action.type == ActionType.CLICK:
+            if self._orders_left > 0:
+                self._orders_left -= 1
         return ActionResult(
             success=True,
             message=f"[mock] executed {action.type.value} on {action.target!r}",
