@@ -115,3 +115,130 @@ def classify_risk(text: str | None) -> RiskLevel:
     if any(word in lowered for word in CONSEQUENTIAL_WORDS):
         return RiskLevel.CONSEQUENTIAL
     return RiskLevel.SAFE
+
+
+# --------------------------------------------------------------------------- #
+# LLM planner — the real brain.
+# --------------------------------------------------------------------------- #
+SYSTEM_PROMPT = """You control a web browser to complete a goal for a user.
+
+Given the GOAL and the current PAGE, output the SINGLE next action as JSON:
+{"type": one of navigate|click|type|select|scroll|back|ask_user|finish,
+ "target": semantic description of the element (role / visible text / meaning,
+           NEVER a css selector, NEVER an index),
+ "value": text to type or select, or the QUESTION when type is ask_user,
+ "reason": one short sentence on why this action,
+ "risk": "safe" or "consequential"}
+
+Rules:
+- Output JSON only. No prose, no code fences.
+- Use "ask_user" when the goal is ambiguous about WHICH item to act on — for
+  example the goal names "John" and the page shows three different Johns. Ask
+  instead of guessing. Put the question in "value" and list the options in it.
+- Mark submit / purchase / pay / delete / send / confirm as "consequential".
+  Everything else (navigating, reading, typing a draft) is "safe".
+- Use "finish" when the GOAL is already satisfied by what the PAGE shows.
+- Prefer the action that makes visible progress on the page you were given."""
+
+
+class LLMPlanner:
+    """Asks the model for exactly one next action and parses it.
+
+    Holds no browser state — it only ever sees the goal and the latest
+    observation, which is what keeps the agent honest about reacting to the
+    live page instead of replaying a memorised script.
+    """
+
+    def __init__(self, llm=None, max_tokens: int = 512) -> None:
+        self._llm = llm
+        self.max_tokens = max_tokens
+
+    @property
+    def llm(self):
+        # Built lazily so importing the agent never requires a key.
+        if self._llm is None:
+            from orbit.config import make_llm
+            self._llm = make_llm()
+        return self._llm
+
+    async def next_action(self, goal: str, obs: Observation) -> AgentAction:
+        prompt = (
+            f"GOAL:\n{goal}\n\n"
+            f"PAGE:\nurl: {obs.url}\ntitle: {obs.title}\n"
+            f"{obs.page_summary}\n\n"
+            f"INTERACTIVE ELEMENTS:\n"
+            + "\n".join(f"- {e}" for e in obs.interactive_elements)
+        )
+        raw = await self.llm.ainvoke(
+            [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=self.max_tokens,
+        )
+        return self._to_action(parse_json(raw))
+
+    @staticmethod
+    def _to_action(data: dict) -> AgentAction:
+        try:
+            action_type = ActionType(str(data["type"]).strip().lower())
+        except (KeyError, ValueError) as exc:
+            raise ValueError(f"model returned an unusable action type: {data!r}") from exc
+
+        target = data.get("target")
+        value = data.get("value")
+
+        # Trust the model's risk, but never downgrade below what the words say:
+        # a model that forgets `risk` must not be able to submit silently.
+        stated = str(data.get("risk", "safe")).strip().lower()
+        risk = RiskLevel.CONSEQUENTIAL if stated == "consequential" else RiskLevel.SAFE
+        if risk is RiskLevel.SAFE and action_type is ActionType.CLICK:
+            risk = classify_risk(target)
+
+        return AgentAction(
+            type=action_type,
+            target=target,
+            value=value,
+            reason=str(data.get("reason", "")),
+            risk=risk,
+        )
+
+
+def parse_json(text: str) -> dict:
+    """Extract the first JSON object from an LLM reply.
+
+    Models wrap JSON in ``` fences, prefix it with "Here's the action:", or add
+    a trailing explanation. Scanning for the first balanced {...} survives all
+    three without a regex that breaks on nested braces.
+    """
+    import json
+
+    if not text or not text.strip():
+        raise ValueError("model returned an empty reply")
+
+    depth = 0
+    start = -1
+    in_string = False
+    escaped = False
+
+    for i, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0 and start != -1:
+                return json.loads(text[start : i + 1])
+
+    raise ValueError(f"no JSON object found in model reply: {text[:200]!r}")
